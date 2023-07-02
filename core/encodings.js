@@ -15,6 +15,9 @@ export const encodings = {
     encodingZRLE: 16,
     encodingTightPNG: -260,
     encodingJPEG: 21,
+    encodingH264: 20,
+    encodingOpenH264: 50,
+    encodingVAH264: 0x48323634, 
 
     pseudoEncodingQualityLevel9: -23,
     pseudoEncodingQualityLevel0: -32,
@@ -43,6 +46,9 @@ export function encodingName(num) {
         case encodings.encodingZRLE:     return "ZRLE";
         case encodings.encodingTightPNG: return "TightPNG";
         case encodings.encodingJPEG:     return "JPEG";
+        case encodings.encodingH264:     return "h264";
+        case encodings.encodingOpenH264: return "OpenH264";
+        case encodings.encodingVAH264:   return "VA.H264";
         default:                         return "[unknown encoding " + num + "]";
     }
 }

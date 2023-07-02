@@ -1,0 +1,3 @@
+[submodule "vendor/h264decoder"]
+	path = vendor/h264decoder
+	url = https://github.com/misak113/h264decoder

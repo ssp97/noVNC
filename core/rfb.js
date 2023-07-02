@@ -35,6 +35,7 @@ import TightDecoder from "./decoders/tight.js";
 import TightPNGDecoder from "./decoders/tightpng.js";
 import ZRLEDecoder from "./decoders/zrle.js";
 import JPEGDecoder from "./decoders/jpeg.js";
+import H264Decoder from './decoders/h264.js';
 
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;
@@ -216,14 +217,34 @@ export default class RFB extends EventTargetMixin {
         this._screen.style.height = '100%';
         this._screen.style.overflow = 'auto';
         this._screen.style.background = DEFAULT_BACKGROUND;
+
+        //webgl canvas is used for rendering video (h264)
+        this._webglCanvas = document.createElement("canvas");
+        this._webglCanvas.style.position = "absolute";
+        this._webglCanvas.style.top = "0";
+        this._webglCanvas.style.left = "0";
+        this._webglCanvas.style.margin = 'auto';
+        this._webglCanvas.style.outline = 'none';
+        this._webglCanvas.width = 0;
+        this._webglCanvas.height = 0;
+        this._webglCanvas.tabIndex = -1;
+        this._webglCanvas.id = "canvas-webgl";
+        this._screen.appendChild(this._webglCanvas);
+
         this._canvas = document.createElement('canvas');
+        this._canvas.style.position = "absolute";
+        this._canvas.style.top = "0";
+        this._canvas.style.left = "0";
         this._canvas.style.margin = 'auto';
         // Some browsers add an outline on focus
         this._canvas.style.outline = 'none';
         this._canvas.width = 0;
         this._canvas.height = 0;
         this._canvas.tabIndex = -1;
+        this._canvas.id = "canvas-2d";
         this._screen.appendChild(this._canvas);
+
+
 
         // Cursor
         this._cursor = new Cursor();
@@ -248,11 +269,26 @@ export default class RFB extends EventTargetMixin {
         this._decoders[encodings.encodingTightPNG] = new TightPNGDecoder();
         this._decoders[encodings.encodingZRLE] = new ZRLEDecoder();
         this._decoders[encodings.encodingJPEG] = new JPEGDecoder();
+        this._decoders[encodings.encodingH264] = new H264Decoder();
+        this._decoders[encodings.encodingVAH264] = this._decoders[encodings.encodingH264];
+        this._decoders[encodings.encodingOpenH264] = this._decoders[encodings.encodingH264];
+
+        const initDecoders = ()=>{
+            var promises = [];
+            for (var key in this._decoders) {
+                var decoder = this._decoders[key];
+                if (typeof decoder.init === "function") {
+                    promises.push(decoder.init());
+                }
+            }
+            return Promise.all(promises);
+        };
+        initDecoders()
 
         // NB: nothing that needs explicit teardown should be done
         // before this point, since this can throw an exception
         try {
-            this._display = new Display(this._canvas);
+            this._display = new Display(this._canvas, this._webglCanvas);
         } catch (exc) {
             Log.Error("Display exception: " + exc);
             throw exc;
@@ -2080,38 +2116,45 @@ export default class RFB extends EventTargetMixin {
 
     _sendEncodings() {
         const encs = [];
-
+        encs.push(encodings.encodingOpenH264);
         // In preference order
-        encs.push(encodings.encodingCopyRect);
-        // Only supported with full depth support
-        if (this._fbDepth == 24) {
-            encs.push(encodings.encodingTight);
-            encs.push(encodings.encodingTightPNG);
-            encs.push(encodings.encodingZRLE);
-            encs.push(encodings.encodingJPEG);
-            encs.push(encodings.encodingHextile);
-            encs.push(encodings.encodingRRE);
-        }
-        encs.push(encodings.encodingRaw);
+        // encs.push(encodings.encodingCopyRect);
+        // // Only supported with full depth support
+        // if (this._fbDepth == 24) {
+        //     encs.push(encodings.encodingTight);
+        //     encs.push(encodings.encodingTightPNG);
+        //     encs.push(encodings.encodingZRLE);
+        //     encs.push(encodings.encodingJPEG);
+        //     encs.push(encodings.encodingHextile);
+        //     encs.push(encodings.encodingRRE);
+        //     encs.push(encodings.encodingH264);
+        //     encs.push(encodings.encodingOpenH264);
+        //     encs.push(encodings.encodingVAH264);
+        // } else if(this._fbDepth == 32){
+        //     encs.push(encodings.encodingH264);
+        //     encs.push(encodings.encodingOpenH264);
+        //     encs.push(encodings.encodingVAH264);
+        // }
+        // encs.push(encodings.encodingRaw);
 
-        // Psuedo-encoding settings
-        encs.push(encodings.pseudoEncodingQualityLevel0 + this._qualityLevel);
-        encs.push(encodings.pseudoEncodingCompressLevel0 + this._compressionLevel);
+        // // Psuedo-encoding settings
+        // encs.push(encodings.pseudoEncodingQualityLevel0 + this._qualityLevel);
+        // encs.push(encodings.pseudoEncodingCompressLevel0 + this._compressionLevel);
 
-        encs.push(encodings.pseudoEncodingDesktopSize);
-        encs.push(encodings.pseudoEncodingLastRect);
-        encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);
-        encs.push(encodings.pseudoEncodingExtendedDesktopSize);
-        encs.push(encodings.pseudoEncodingXvp);
-        encs.push(encodings.pseudoEncodingFence);
-        encs.push(encodings.pseudoEncodingContinuousUpdates);
-        encs.push(encodings.pseudoEncodingDesktopName);
-        encs.push(encodings.pseudoEncodingExtendedClipboard);
+        // encs.push(encodings.pseudoEncodingDesktopSize);
+        // encs.push(encodings.pseudoEncodingLastRect);
+        // encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);
+        // encs.push(encodings.pseudoEncodingExtendedDesktopSize);
+        // encs.push(encodings.pseudoEncodingXvp);
+        // encs.push(encodings.pseudoEncodingFence);
+        // encs.push(encodings.pseudoEncodingContinuousUpdates);
+        // encs.push(encodings.pseudoEncodingDesktopName);
+        // encs.push(encodings.pseudoEncodingExtendedClipboard);
 
-        if (this._fbDepth == 24) {
-            encs.push(encodings.pseudoEncodingVMwareCursor);
-            encs.push(encodings.pseudoEncodingCursor);
-        }
+        // if (this._fbDepth == 24) {
+        //     encs.push(encodings.pseudoEncodingVMwareCursor);
+        //     encs.push(encodings.pseudoEncodingCursor);
+        // }
 
         RFB.messages.clientEncodings(this._sock, encs);
     }

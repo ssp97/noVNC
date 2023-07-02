@@ -11,7 +11,7 @@ import Base64 from "./base64.js";
 import { toSigned32bit } from './util/int.js';
 
 export default class Display {
-    constructor(target) {
+    constructor(target, targetWebGL) {
         this._drawCtx = null;
 
         this._renderQ = [];  // queue drawing actions for in-oder rendering
@@ -27,6 +27,8 @@ export default class Display {
 
         // The visible canvas
         this._target = target;
+        this._targetWebGl = targetWebGL;
+        
 
         if (!this._target) {
             throw new Error("Target must be set");
@@ -41,6 +43,7 @@ export default class Display {
         }
 
         this._targetCtx = this._target.getContext('2d');
+        //this._webglFrameSink = new WebGLFrameSink(this._targetWebGl);
 
         // the visible canvas viewport (i.e. what actually gets seen)
         this._viewportLoc = { 'x': 0, 'y': 0, 'w': this._target.width, 'h': this._target.height };
@@ -405,10 +408,57 @@ export default class Display {
         }
     }
 
+    blitImageYuv(buffer, width, height) {
+        if (!buffer)
+            return
+
+        if(!this.canvasBuffer)
+            this.canvasBuffer = this._drawCtx.createImageData(width, height)
+
+        const lumaSize = width * height
+        const chromaSize = lumaSize >> 2
+
+        const ybuf = buffer.subarray(0, lumaSize)
+        const ubuf = buffer.subarray(lumaSize, lumaSize + chromaSize)
+        const vbuf = buffer.subarray(lumaSize + chromaSize, lumaSize + 2 * chromaSize)
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const yIndex = x + y * width
+                const uIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
+                const vIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
+                const R = 1.164 * (ybuf[yIndex] - 16) + 1.596 * (vbuf[vIndex] - 128)
+                const G = 1.164 * (ybuf[yIndex] - 16) - 0.813 * (vbuf[vIndex] - 128) - 0.391 * (ubuf[uIndex] - 128)
+                const B = 1.164 * (ybuf[yIndex] - 16) + 2.018 * (ubuf[uIndex] - 128)
+
+                const rgbIndex = yIndex * 4
+                this.canvasBuffer.data[rgbIndex + 0] = R
+                this.canvasBuffer.data[rgbIndex + 1] = G
+                this.canvasBuffer.data[rgbIndex + 2] = B
+                this.canvasBuffer.data[rgbIndex + 3] = 0xff
+            }
+        }
+
+        this._drawCtx.putImageData(this.canvasBuffer, 0, 0)
+        this._damage(0, 0, width, height);
+        //this.blitImage(0, 0, width, height, this.canvasBuffer, 0,false);
+    }
+
+    blitImageWebgl(yuvFrame) {
+        if(this._webglFrameSink) {
+            this._webglFrameSink.drawFrame(yuvFrame);
+        }
+        else
+        {
+            console.log(this._webglFrameSink);
+        }
+    }
+
     drawImage(img, x, y) {
         this._drawCtx.drawImage(img, x, y);
         this._damage(x, y, img.width, img.height);
     }
+
 
     autoscale(containerWidth, containerHeight) {
         let scaleRatio;
