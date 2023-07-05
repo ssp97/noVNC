@@ -1,0 +1,14 @@
+prefix=/mnt/d/Download/Downloads/ffmpeg-h264-wasm/ffmpeg/../dist
+exec_prefix=${prefix}
+libdir=/mnt/d/Download/Downloads/ffmpeg-h264-wasm/ffmpeg/../dist/lib
+includedir=/mnt/d/Download/Downloads/ffmpeg-h264-wasm/ffmpeg/../dist/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 57.28.100
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil -pthread -lm
+Libs.private: 
+Cflags: -I${includedir}

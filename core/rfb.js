@@ -944,6 +944,7 @@ export default class RFB extends EventTargetMixin {
 
             case 'disconnecting':
                 this._disconnect();
+                this._decoders[encodings.encodingH264].close();
 
                 this._disconnTimer = setTimeout(() => {
                     Log.Error("Disconnection timed out.");

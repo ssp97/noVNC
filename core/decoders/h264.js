@@ -1,16 +1,8 @@
 import Websock from "../websock.js";
 import Display from "../display.js";
-
-import { H264Decoder as H264Core} from '/vendor/h264decoder/dist/index.js';
-
-
-
+const work = new Worker("/vendor/libav_h264/dist/main.worker.js");
 
 export default class H264Decoder {
-  // static decodedFrameCount : number = 0;
-  // decoder : H264Core;
-  // emptyu:Uint8Array|null;
-  // emptyv:Uint8Array|null;
 
   constructor() {
   }
@@ -18,19 +10,38 @@ export default class H264Decoder {
   async init() {
     if(this.decoder == null)
     {
-      this.decoder = new H264Core();
-      this.emptyu = null;
-      this.emptyv = null;
-      //await this.decoder.init();
+      this.decoder = work;
+      var that = this;
+      this.decoder.addEventListener('message', (e) => {
+        //console.log("decoder e", e);
+        if(e.data.type == "pictureReady")
+        {
+          //console.log(e.data.data)
+          that.display.blitImageYuv2(e.data.data.yPlane,e.data.data.uPlane, e.data.data.vPlane , e.data.width, e.data.height);
+          console.log(e.data.data);
+          that.decoder.postMessage({
+            type:"closeFrame",
+            data:e.data.data.ptr,
+            renderStateId: 0
+          },
+          );
+        }
+      }, false);
+      //console.log(this.decoder)
       console.log("h264 init ok~!");
     }
   }
 
+  close() {
+    if(this.decoder)
+    {
+      console.log("close h264");
+      this.decoder = null;
+    }
+  }
+
   decodeRect(x, y, width, height, sock, display, depth) {
-    //TODO: switch to Webgl display whecurn in x264 mode
-    //TODO: instantiate h264 decoder.
-    //TODO: receive data, check where decodeRect is called, maybe we need another header sent in server to trigger this
-    //   function
+    this.display = display;
     console.log("on h264 decodeRect");
 
     let startDecode = performance.now();
@@ -39,54 +50,21 @@ export default class H264Decoder {
     const flag = sock.rQshift32(); //todo process flag
 
     const payload = sock.rQshiftBytes(length);
-    const result = this.decoder.decode(payload);
+    //const result = this.decoder.decode(payload);
 
     let endDecode = performance.now();
-    // StatisticsData.setSessionStat("decodedFrameCount", ++H264Decoder.decodedFrameCount);
-    // StatisticsData.setFrameStat("decodeDurationMs", endDecode-startDecode);
+    console.log("decodeDurationMs ", endDecode-startDecode);
 
-    console.log(result);
+    const payloadArr = new Uint8Array(payload);
 
-    if(result === H264Core.PIC_RDY && this.decoder.pic) {
-      console.log(`frame decoded. payloadSize=(${length})`);
-    } else {
-      console.log("decoder error "+result);
-    }
-
-    height+=8;
-    if (result === 1 && this.decoder.pic) {
-      var frame = {
-          format: ({
-              width: width,
-              height: height,
-              chromaWidth: width / 2,
-              chromaHeight: height / 2,
-              cropLeft: 0,
-              cropTop: 0,
-              cropWidth: width,
-              cropHeight: height,
-              displayWidth: width,
-              displayHeight: height // derived from cropHeight
-          }),
-          y: {
-              bytes: this.decoder.pic.subarray(0, width * height),
-              stride: width,
-          },
-          u: {
-              bytes: this.decoder.pic.subarray(width * height, (width * height) + (width * height) / 4),
-              stride: width / 2,
-          },
-          v: {
-              bytes: this.decoder.pic.subarray((width * height) + (width * height / 4), (width * height) + (width * height / 4) + (width * height / 4)),
-              stride: width / 2,
-          }
-      };
-      console.log(display);
-      //display.blitImageWebgl(frame);
-      //display.blitImage(0, 0, width, height, this.decoder.pic, false);
-      display.blitImageYuv(this.decoder.pic, width, height);
-  }
-
+    this.decoder.postMessage({
+      type: "decode",
+      data: payloadArr.buffer,
+      offset: payloadArr.byteOffset,
+      length: payloadArr.byteLength,
+      renderStateId: 0
+    },[payloadArr.buffer],
+    );
     return true; //important to return true, otherwise receive queue will break.
   }
 }
