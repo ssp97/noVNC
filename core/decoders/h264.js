@@ -13,12 +13,9 @@ export default class H264Decoder {
       this.decoder = work;
       var that = this;
       this.decoder.addEventListener('message', (e) => {
-        //console.log("decoder e", e);
         if(e.data.type == "pictureReady")
         {
-          //console.log(e.data.data)
           that.display.blitImageYuv2(e.data.data.yPlane,e.data.data.uPlane, e.data.data.vPlane , e.data.width, e.data.height);
-          console.log(e.data.data);
           that.decoder.postMessage({
             type:"closeFrame",
             data:e.data.data.ptr,
@@ -27,7 +24,6 @@ export default class H264Decoder {
           );
         }
       }, false);
-      //console.log(this.decoder)
       console.log("h264 init ok~!");
     }
   }
@@ -36,7 +32,10 @@ export default class H264Decoder {
     if(this.decoder)
     {
       console.log("close h264");
-      this.decoder = null;
+      this.decoder.postMessage({
+        type: "release",
+        renderStateId: 0
+      });
     }
   }
 
