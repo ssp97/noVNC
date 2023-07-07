@@ -9,6 +9,7 @@
 import * as Log from './util/logging.js';
 import Base64 from "./base64.js";
 import { toSigned32bit } from './util/int.js';
+import YUVCanvas from '/vendor/YUVCanvas/YUVCanvas.js';
 
 export default class Display {
     constructor(target, targetWebGL) {
@@ -28,7 +29,7 @@ export default class Display {
         // The visible canvas
         this._target = target;
         this._targetWebGl = targetWebGL;
-        
+
 
         if (!this._target) {
             throw new Error("Target must be set");
@@ -42,8 +43,10 @@ export default class Display {
             throw new Error("no getContext method");
         }
 
+        console.log(this._target.width, this._target.height);
+
         this._targetCtx = this._target.getContext('2d');
-        //this._webglFrameSink = new WebGLFrameSink(this._targetWebGl);
+
 
         // the visible canvas viewport (i.e. what actually gets seen)
         this._viewportLoc = { 'x': 0, 'y': 0, 'w': this._target.width, 'h': this._target.height };
@@ -51,7 +54,8 @@ export default class Display {
         // The hidden canvas, where we do the actual rendering
         this._backbuffer = document.createElement('canvas');
         this._drawCtx = this._backbuffer.getContext('2d');
-
+        // this._webglCtx = document.createElement('canvas').getContext('webgl');
+        // console.log(this._webglCtx);
         this._damageBounds = { left: 0, top: 0,
                                right: this._backbuffer.width,
                                bottom: this._backbuffer.height };
@@ -408,84 +412,70 @@ export default class Display {
         }
     }
 
-    blitImageYuv2(y,u,v, width, height) {
-        if (!y || !u || !v)
-            return
+    blitImageYuvOpenGL(y, u, v, width, height) {
+        if (!y || !u || !v) {return;}
 
-        if(!this.canvasBuffer)
-            this.canvasBuffer = this._drawCtx.createImageData(width, height)
-
-        const lumaSize = width * height
-        const chromaSize = lumaSize >> 2
-
-        const ybuf = y;//buffer.subarray(0, lumaSize)
-        const ubuf = u;//buffer.subarray(lumaSize, lumaSize + chromaSize)
-        const vbuf = v;//buffer.subarray(lumaSize + chromaSize, lumaSize + 2 * chromaSize)
-
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const yIndex = x + y * width
-                const uIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
-                const vIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
-                const R = 1.164 * (ybuf[yIndex] - 16) + 1.596 * (vbuf[vIndex] - 128)
-                const G = 1.164 * (ybuf[yIndex] - 16) - 0.813 * (vbuf[vIndex] - 128) - 0.391 * (ubuf[uIndex] - 128)
-                const B = 1.164 * (ybuf[yIndex] - 16) + 2.018 * (ubuf[uIndex] - 128)
-
-                const rgbIndex = yIndex * 4
-                this.canvasBuffer.data[rgbIndex + 0] = R
-                this.canvasBuffer.data[rgbIndex + 1] = G
-                this.canvasBuffer.data[rgbIndex + 2] = B
-                this.canvasBuffer.data[rgbIndex + 3] = 0xff
-            }
+        if (this._yuvCanvas == null) {
+            this._yuvCanvas = new YUVCanvas({
+                width: width,
+                height: height,
+                contextOptions: {preserveDrawingBuffer: true},
+                canvas: this._targetWebGl
+            });
         }
 
-        this._drawCtx.putImageData(this.canvasBuffer, 0, 0)
-        this._damage(0, 0, width, height);
-        //this.blitImage(0, 0, width, height, this.canvasBuffer, 0,false);
+        this._yuvCanvas.drawNextOuptutPictureGL({
+            yData: y,
+            // yDataPerRow: e.yDataPerRow,
+            // yRowCnt: e.yRowCnt,
+            uData: u,
+            // uDataPerRow: e.uDataPerRow,
+            // uRowCnt: e.uRowCnt,
+            vData: v,
+            // vDataPerRow: e.vDataPerRow,
+            // vRowCnt: e.vRowCnt,
+            roll: 0
+        });
     }
 
     blitImageYuv(buffer, width, height) {
-        if (!buffer)
-            return
+        if (!buffer) {return;}
 
-        if(!this.canvasBuffer)
-            this.canvasBuffer = this._drawCtx.createImageData(width, height)
+        if (!this.canvasBuffer) {this.canvasBuffer = this._drawCtx.createImageData(width, height);}
 
-        const lumaSize = width * height
-        const chromaSize = lumaSize >> 2
+        const lumaSize = width * height;
+        const chromaSize = lumaSize >> 2;
 
-        const ybuf = buffer.subarray(0, lumaSize)
-        const ubuf = buffer.subarray(lumaSize, lumaSize + chromaSize)
-        const vbuf = buffer.subarray(lumaSize + chromaSize, lumaSize + 2 * chromaSize)
+        const ybuf = buffer.subarray(0, lumaSize);
+        const ubuf = buffer.subarray(lumaSize, lumaSize + chromaSize);
+        const vbuf = buffer.subarray(lumaSize + chromaSize, lumaSize + 2 * chromaSize);
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                const yIndex = x + y * width
-                const uIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
-                const vIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2)
-                const R = 1.164 * (ybuf[yIndex] - 16) + 1.596 * (vbuf[vIndex] - 128)
-                const G = 1.164 * (ybuf[yIndex] - 16) - 0.813 * (vbuf[vIndex] - 128) - 0.391 * (ubuf[uIndex] - 128)
-                const B = 1.164 * (ybuf[yIndex] - 16) + 2.018 * (ubuf[uIndex] - 128)
+                const yIndex = x + y * width;
+                const uIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2);
+                const vIndex = ~~(y / 2) * ~~(width / 2) + ~~(x / 2);
+                const R = 1.164 * (ybuf[yIndex] - 16) + 1.596 * (vbuf[vIndex] - 128);
+                const G = 1.164 * (ybuf[yIndex] - 16) - 0.813 * (vbuf[vIndex] - 128) - 0.391 * (ubuf[uIndex] - 128);
+                const B = 1.164 * (ybuf[yIndex] - 16) + 2.018 * (ubuf[uIndex] - 128);
 
-                const rgbIndex = yIndex * 4
-                this.canvasBuffer.data[rgbIndex + 0] = R
-                this.canvasBuffer.data[rgbIndex + 1] = G
-                this.canvasBuffer.data[rgbIndex + 2] = B
-                this.canvasBuffer.data[rgbIndex + 3] = 0xff
+                const rgbIndex = yIndex * 4;
+                this.canvasBuffer.data[rgbIndex + 0] = R;
+                this.canvasBuffer.data[rgbIndex + 1] = G;
+                this.canvasBuffer.data[rgbIndex + 2] = B;
+                this.canvasBuffer.data[rgbIndex + 3] = 0xff;
             }
         }
 
-        this._drawCtx.putImageData(this.canvasBuffer, 0, 0)
+        this._drawCtx.putImageData(this.canvasBuffer, 0, 0);
         this._damage(0, 0, width, height);
         //this.blitImage(0, 0, width, height, this.canvasBuffer, 0,false);
     }
 
     blitImageWebgl(yuvFrame) {
-        if(this._webglFrameSink) {
+        if (this._webglFrameSink) {
             this._webglFrameSink.drawFrame(yuvFrame);
-        }
-        else
-        {
+        } else {
             console.log(this._webglFrameSink);
         }
     }
